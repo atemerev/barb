@@ -3,10 +3,12 @@ package com.temerev.barb
 import java.util.UUID
 
 import akka.actor.{Actor, ActorLogging, ActorSystem, Props}
+import com.miriamlaurel.fxcore.instrument.CurrencyPair
+import com.miriamlaurel.fxcore.market.{Order, QuoteSide}
 import com.miriamlaurel.fxcore.party.Party
 import quickfix._
 import quickfix.field._
-import quickfix.fix42.MarketDataRequest
+import quickfix.fix42.{TradingSessionStatus, MarketDataIncrementalRefresh, MarketDataRequest}
 
 class FastmatchConnector extends Actor with Application with ActorLogging {
 
@@ -14,6 +16,7 @@ class FastmatchConnector extends Actor with Application with ActorLogging {
   val PATH_TO_SESSION_SETTINGS = "/fm-session.ini"
   val initiator = mkInitiator()
   val cracker = new MessageCracker(this)
+  val book = new OrderBook(CurrencyPair("EUR/USD"))
 
   override def preStart(): Unit = {
     super.preStart()
@@ -40,7 +43,27 @@ class FastmatchConnector extends Actor with Application with ActorLogging {
 
   override def toApp(message: Message, sessionID: SessionID): Unit = ()
 
-  override def fromApp(message: Message, sessionID: SessionID): Unit = {
+  override def fromApp(message: Message, sessionID: SessionID): Unit = cracker.crack(message, sessionID)
+
+  def onMessage(message: TradingSessionStatus, sessionID: SessionID): Unit = {
+    val message = new MarketDataRequest()
+    message.set(new MDReqID(UUID.randomUUID().toString))
+    message.set(new SubscriptionRequestType(SubscriptionRequestType.SNAPSHOT_PLUS_UPDATES))
+    message.set(new MarketDepth(0))
+    message.set(new MDUpdateType(MDUpdateType.INCREMENTAL_REFRESH))
+    message.set(new AggregatedBook(false))
+    val group1 = new MarketDataRequest.NoMDEntryTypes
+    group1.set(new MDEntryType(MDEntryType.BID))
+    message.addGroup(group1)
+    group1.set(new MDEntryType(MDEntryType.OFFER))
+    message.addGroup(group1)
+    val group2 = new MarketDataRequest.NoRelatedSym
+    group2.set(new Symbol("EUR/USD"))
+    message.addGroup(group2)
+    Session.sendToTarget(message, sessionID)
+  }
+  /*
+    override def fromApp(message: Message, sessionID: SessionID): Unit = {
     if (message.getHeader.getString(35) == "h") {
       val message = new MarketDataRequest()
       message.set(new MDReqID(UUID.randomUUID().toString))
@@ -57,8 +80,27 @@ class FastmatchConnector extends Actor with Application with ActorLogging {
       group2.set(new Symbol("ALL"))
       message.addGroup(group2)
       Session.sendToTarget(message, sessionID)
+
+   */
+
+  def onMessage(message: MarketDataIncrementalRefresh, sid: SessionID): Unit = {
+    val noEntries = if (message.isSetNoMDEntries) message.getNoMDEntries.getValue else 0
+    val group = new MarketDataIncrementalRefresh.NoMDEntries
+    for (i <- 1 to noEntries) yield {
+      message.getGroup(i, group)
+      val mdType = group.getMDUpdateAction.getValue
+      val cp = CurrencyPair(group.getSymbol.getValue)
+      val side = if (group.getMDEntryType.getValue == MDEntryType.BID) QuoteSide.Bid else QuoteSide.Ask
+      val sourceId = group.getMDEntryID.getValue
+      if (mdType == MDUpdateAction.NEW || mdType == MDUpdateAction.CHANGE) {
+        val amount = BigDecimal(group.getDecimal(MDEntrySize.FIELD))
+        val price = BigDecimal(group.getDecimal(MDEntryPx.FIELD))
+        val order = Order(cp, side, amount, price, PARTY, Some(sourceId))
+        book.addUpdate(order)
+      } else {
+        book.remove(PARTY, sourceId, side)
+      }
     }
-    log.info(message.toString)
   }
 
 /*
