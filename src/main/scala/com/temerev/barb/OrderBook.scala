@@ -1,7 +1,7 @@
 package com.temerev.barb
 
 import com.miriamlaurel.fxcore.instrument.Instrument
-import com.miriamlaurel.fxcore.market.{QuoteSide, Order}
+import com.miriamlaurel.fxcore.market.{Order, QuoteSide}
 import com.miriamlaurel.fxcore.party.Party
 
 import scala.collection.immutable.TreeMap
@@ -16,7 +16,6 @@ class OrderBook(instrument: Instrument) {
     val orderId = order.sourceId.get
     val half = if (order.side == QuoteSide.Bid) bids else offers
     val newBucket = half.getOrElse(order.price, Map.empty) + (orderId -> order)
-    byId = byId + (orderId -> order)
     byId.get(orderId) match {
       case Some(prevOrder) =>
         val prevBucket = half(prevOrder.price) - orderId
@@ -33,6 +32,7 @@ class OrderBook(instrument: Instrument) {
         offers = offers + (order.price -> newBucket)
       }
     }
+    byId = byId + (orderId -> order)
     // todo remove
     println("Bids size: " + bids.size)
     println("Offers size: " + bids.size)
@@ -45,10 +45,10 @@ class OrderBook(instrument: Instrument) {
         byId = byId - sourceId
         if (side == QuoteSide.Bid) {
           val bucket = bids(order.price) - sourceId
-          bids = bids + (order.price -> bucket)
+          if (bucket.isEmpty) bids = bids - order.price else bids = bids + (order.price -> bucket)
         } else {
           val bucket = offers(order.price) - sourceId
-          offers = offers + (order.price -> bucket)
+          if (bucket.isEmpty) offers = offers - order.price else offers = offers + (order.price -> bucket)
         }
         // todo replace with logs
       case None => println("Warning: unknown id received: " + sourceId)
