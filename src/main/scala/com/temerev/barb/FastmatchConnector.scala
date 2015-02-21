@@ -8,7 +8,7 @@ import com.miriamlaurel.fxcore.market.{Order, QuoteSide}
 import com.miriamlaurel.fxcore.party.Party
 import quickfix._
 import quickfix.field._
-import quickfix.fix42.{TradingSessionStatus, MarketDataIncrementalRefresh, MarketDataRequest}
+import quickfix.fix42.{MarketDataIncrementalRefresh, MarketDataRequest, TradingSessionStatus}
 
 class FastmatchConnector extends Actor with Application with ActorLogging {
 
@@ -16,7 +16,7 @@ class FastmatchConnector extends Actor with Application with ActorLogging {
   val PATH_TO_SESSION_SETTINGS = "/fm-session.ini"
   val initiator = mkInitiator()
   val cracker = new MessageCracker(this)
-  val book = new OrderBook(CurrencyPair("EUR/USD"))
+  var book = new OrderBook(CurrencyPair("EUR/USD"))
 
   override def preStart(): Unit = {
     super.preStart()
@@ -96,9 +96,9 @@ class FastmatchConnector extends Actor with Application with ActorLogging {
         val amount = BigDecimal(group.getDecimal(MDEntrySize.FIELD))
         val price = BigDecimal(group.getDecimal(MDEntryPx.FIELD))
         val order = Order(cp, side, amount, price, PARTY, Some(sourceId))
-        book.addUpdate(order)
+        book = book.addUpdate(order)
       } else {
-        book.remove(PARTY, sourceId, side)
+        book = book.remove(PARTY, sourceId, side)
       }
     }
   }

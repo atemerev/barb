@@ -6,52 +6,56 @@ import com.miriamlaurel.fxcore.party.Party
 
 import scala.collection.immutable.TreeMap
 
-class OrderBook(instrument: Instrument) {
+class OrderBook(
+                 val instrument: Instrument,
+                 val bids: TreeMap[BigDecimal, Map[String, Order]] = TreeMap.empty(new Ordering[BigDecimal]() {
+                   override def compare(x: BigDecimal, y: BigDecimal): Int = y.compare(x)
+                 }),
+                 val offers: TreeMap[BigDecimal, Map[String, Order]] = TreeMap.empty,
+                 byId: Map[String, Order] = Map.empty) {
 
-  var byId = Map.empty[String, Order]
-  var bids = TreeMap.empty[BigDecimal, Map[String, Order]]
-  var offers = TreeMap.empty[BigDecimal, Map[String, Order]]
-
-  def addUpdate(order: Order): Unit = {
+  def addUpdate(order: Order): OrderBook = {
     val orderId = order.sourceId.get
     val half = if (order.side == QuoteSide.Bid) bids else offers
     val newBucket = half.getOrElse(order.price, Map.empty) + (orderId -> order)
-    byId.get(orderId) match {
+    val (newBids, newOffers) = byId.get(orderId) match {
       case Some(prevOrder) =>
         val prevBucket = half(prevOrder.price) - orderId
         if (order.side == QuoteSide.Bid) {
-          if (prevBucket.isEmpty) bids = bids - prevOrder.price else bids = bids + (prevOrder.price -> prevBucket)
-          bids = bids + (order.price -> newBucket)
+          val updated = if (prevBucket.isEmpty) bids - prevOrder.price else bids + (prevOrder.price -> prevBucket)
+          (updated, offers)
         } else {
-          if (prevBucket.isEmpty) offers = offers - prevOrder.price else offers = offers + (prevOrder.price -> prevBucket)
-          offers = offers + (order.price -> newBucket)
+          val updated = if (prevBucket.isEmpty) offers - prevOrder.price else offers + (prevOrder.price -> prevBucket)
+          (bids, updated)
         }
       case None => if (order.side == QuoteSide.Bid) {
-        bids = bids + (order.price -> newBucket)
+        (bids + (order.price -> newBucket), offers)
       } else {
-        offers = offers + (order.price -> newBucket)
+        (bids, offers + (order.price -> newBucket))
       }
     }
-    byId = byId + (orderId -> order)
+    val newById = byId + (orderId -> order)
     // todo remove
-    println("Bids size: " + bids.size)
-    println("Offers size: " + bids.size)
+    println("Bids size: " + newBids.size)
+    println("Offers size: " + newOffers.size)
+    new OrderBook(instrument, newBids, newOffers, newById)
   }
 
-  def remove(source: Party, sourceId: String, side: QuoteSide.Value): Unit = {
+  def remove(source: Party, sourceId: String, side: QuoteSide.Value): OrderBook = {
     val maybeOrder = byId.get(sourceId)
     maybeOrder match {
       case Some(order) =>
-        byId = byId - sourceId
+        val newById = byId - sourceId
         if (side == QuoteSide.Bid) {
           val bucket = bids(order.price) - sourceId
-          if (bucket.isEmpty) bids = bids - order.price else bids = bids + (order.price -> bucket)
+          val updated = if (bucket.isEmpty) bids - order.price else bids + (order.price -> bucket)
+          new OrderBook(instrument, updated, offers, newById)
         } else {
           val bucket = offers(order.price) - sourceId
-          if (bucket.isEmpty) offers = offers - order.price else offers = offers + (order.price -> bucket)
+          val updated = if (bucket.isEmpty) offers - order.price else offers + (order.price -> bucket)
+          new OrderBook(instrument, bids, updated, newById)
         }
-        // todo replace with logs
-      case None => println("Warning: unknown id received: " + sourceId)
+      case None => this
     }
   }
 }
