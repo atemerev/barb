@@ -1,11 +1,12 @@
-package com.temerev.barb
+package com.temerev.barb.links
 
 import java.util.UUID
 
 import akka.actor.{Actor, ActorLogging, ActorSystem, Props}
 import com.miriamlaurel.fxcore.instrument.CurrencyPair
-import com.miriamlaurel.fxcore.market.{Order, QuoteSide}
+import com.miriamlaurel.fxcore.market.{OrderKey, Order, QuoteSide}
 import com.miriamlaurel.fxcore.party.Party
+import com.temerev.barb.book.OrderBook
 import quickfix._
 import quickfix.field._
 import quickfix.fix42.{MarketDataIncrementalRefresh, MarketDataRequest, TradingSessionStatus}
@@ -92,13 +93,14 @@ class FastmatchConnector extends Actor with Application with ActorLogging {
       val cp = CurrencyPair(group.getSymbol.getValue)
       val side = if (group.getMDEntryType.getValue == MDEntryType.BID) QuoteSide.Bid else QuoteSide.Ask
       val sourceId = group.getMDEntryID.getValue
+      val key = OrderKey(PARTY, cp, side, sourceId)
       if (mdType == MDUpdateAction.NEW || mdType == MDUpdateAction.CHANGE) {
         val amount = BigDecimal(group.getDecimal(MDEntrySize.FIELD))
         val price = BigDecimal(group.getDecimal(MDEntryPx.FIELD))
-        val order = Order(cp, side, amount, price, PARTY, Some(sourceId))
+        val order = Order(key, amount, price)
         book = book.addUpdate(order)
       } else {
-        book = book.remove(PARTY, sourceId, side)
+        book = book.remove(key)
       }
     }
   }
