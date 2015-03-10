@@ -1,7 +1,7 @@
 package com.temerev.barb.book
 
 import com.miriamlaurel.fxcore.instrument.Instrument
-import com.miriamlaurel.fxcore.market.{OrderKey, Order, QuoteSide}
+import com.miriamlaurel.fxcore.market.{Order, OrderKey, QuoteSide}
 import com.miriamlaurel.fxcore.party.Party
 
 import scala.collection.immutable.TreeMap
@@ -16,7 +16,7 @@ case class OrderBook(
 
   def addUpdate(order: Order): OrderBook = {
     val key = order.key
-    val half = if (key.side == QuoteSide.Bid) bids else offers
+    val half = selectHalf(key.side)
     val newBucket = half.getOrElse(order.price, Map.empty) + (key -> order)
     val (newBids, newOffers) = byKey.get(key) match {
       case Some(prevOrder) =>
@@ -35,7 +35,7 @@ case class OrderBook(
     maybeOrder match {
       case Some(order) =>
         val newById = byKey - key
-        val half = if (key.side == QuoteSide.Bid) bids else offers
+        val half = selectHalf(key.side)
         val bucket = half(order.price) - key
         val updated = if (bucket.isEmpty) half - order.price else half + (order.price -> bucket)
         if (key.side == QuoteSide.Bid) new OrderBook(instrument, updated, offers, newById)
@@ -43,14 +43,25 @@ case class OrderBook(
       case None => this
     }
   }
+  
+  def select(party: Party): OrderBook = select(party, include = true, None)
 
-  def remove(party: Party, side: QuoteSide.Value): OrderBook = {
-    var book = this
-    val half = if (side == QuoteSide.Bid) bids else offers
-    val toRemove = half.values.flatten.map(_._1).filter(_.party == party)
-    for (offer <- toRemove) book = book.remove(offer)
+  def remove(party: Party, side: QuoteSide.Value): OrderBook = select(party, include = false, side = Some(side))
+
+  def remove(party: Party): OrderBook = select(party, include = false, None)
+
+  def best(side: QuoteSide.Value): Iterable[Order] = {
+    val half = selectHalf(side)
+    if (half.isEmpty) Seq.empty else half(half.firstKey).values
+  }
+
+  private def select(party: Party, include: Boolean, side: Option[QuoteSide.Value]): OrderBook = {
+    var book = OrderBook(instrument)
+    val selector = (key: OrderKey) => if (include) key.party == party && side.getOrElse(key.side) == key.side
+    else key.party != party && side.getOrElse(key.side) == key.side
+    for (b <- byKey) if (selector(b._1)) book = book.addUpdate(b._2)
     book
   }
 
-  def remove(party: Party): OrderBook = remove(party, QuoteSide.Bid).remove(party, QuoteSide.Ask)
+  private def selectHalf(side: QuoteSide.Value) = if (side == QuoteSide.Bid) bids else offers
 }
