@@ -7,7 +7,7 @@ import com.miriamlaurel.fxcore.instrument.CurrencyPair
 import com.miriamlaurel.fxcore.market.{OrderKey, Order, QuoteSide}
 import com.miriamlaurel.fxcore.party.Party
 import com.temerev.barb.book.OrderBook
-import com.temerev.barb.book.event.{ClearLp, Remove, AddUpdate}
+import com.temerev.barb.book.event._
 import org.joda.time.DateTime
 import quickfix._
 import quickfix.field._
@@ -89,10 +89,10 @@ class FastmatchConnector(bookManager: ActorRef) extends Actor with Application w
 
   def onMessage(message: MarketDataSnapshotFullRefresh, sid: SessionID): Unit = {
     val ts = extractTimestamp(message)
-    bookManager ! ClearLp(PARTY, ts)
     val noEntries = if (message.isSetNoMDEntries) message.getNoMDEntries.getValue else 0
     val group = new MarketDataSnapshotFullRefresh.NoMDEntries
     val cp = CurrencyPair(message.getSymbol.getValue)
+    var book = OrderBook(cp)
     val offers = for (i <- 1 to noEntries) yield {
       message.getGroup(i, group)
       val side = if (group.getMDEntryType.getValue == MDEntryType.BID) QuoteSide.Bid else QuoteSide.Ask
@@ -100,8 +100,9 @@ class FastmatchConnector(bookManager: ActorRef) extends Actor with Application w
       val price = BigDecimal(group.getDecimal(MDEntryPx.FIELD))
       val orderId = group.getOrderID.getValue
       val order = Order(OrderKey(PARTY, cp, side, orderId), amount, price)
-      bookManager ! AddUpdate(order, ts)
+      book = book.addUpdate(order)
     }
+    bookManager ! Replace(PARTY, cp, book)
   }
 
   private def mkInitiator(): Initiator = {

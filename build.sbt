@@ -10,6 +10,7 @@ libraryDependencies ++= Seq(
   "org.quickfixj" % "quickfixj-all" % "1.5.3",
   "org.apache.mina" % "mina-core" % "1.1.7",
   "org.apache.mina" % "mina-filter-ssl" % "1.1.7",
+  "com.hotspotfx" % "api" % "4.8.2",
   "com.typesafe.akka" %% "akka-actor" % "2.3.9",
   "com.typesafe.akka" %% "akka-testkit" % "2.3.9",
   "org.slf4j" % "slf4j-api" % "1.7.10",
