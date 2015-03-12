@@ -50,6 +50,14 @@ case class OrderBook(
 
   def remove(party: Party): OrderBook = select(party, include = false, None)
 
+  def replace(party: Party, book: OrderBook): OrderBook = remove(party).merge(book)
+
+  def merge(book: OrderBook) = {
+    var result = this
+    book.byKey.values.foreach(order => result = result.addUpdate(order))
+    result
+  }
+
   def best(side: QuoteSide.Value): Iterable[Order] = {
     val half = selectHalf(side)
     if (half.isEmpty) Seq.empty else half(half.firstKey).values

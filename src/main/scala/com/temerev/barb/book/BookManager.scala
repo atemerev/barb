@@ -28,6 +28,12 @@ class BookManager extends Actor with ActorLogging {
           broadcast(upd)
         case None => log.warning("No order found for remove attempt: " + key)
       }
+    case upd @ Replace(party, instrument, newBook) =>
+      books.get(instrument) match {
+        case Some(oldBook) => books += instrument -> oldBook.replace(party, newBook)
+        case None => books += instrument -> newBook
+      }
+      broadcast(upd)
   }
 
   private def broadcast(update: BookUpdateEvent): Unit = {
