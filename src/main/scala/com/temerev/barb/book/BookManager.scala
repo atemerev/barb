@@ -1,6 +1,6 @@
 package com.temerev.barb.book
 
-import akka.actor.{Actor, ActorLogging}
+import akka.actor.{ActorRef, Actor, ActorLogging}
 import com.miriamlaurel.fxcore.instrument.Instrument
 import com.miriamlaurel.fxcore.market.QuoteSide
 import com.temerev.barb.arbitrage.event.ArbitrageEvent
@@ -8,7 +8,7 @@ import com.temerev.barb.book.event._
 
 import scala.collection.mutable
 
-class BookManager extends Actor with ActorLogging {
+class BookManager(arbMonitor: ActorRef) extends Actor with ActorLogging {
 
   val books = mutable.AnyRefMap[Instrument, OrderBook]()
   val subscriptions = mutable.Set[Subscription]()
@@ -57,7 +57,7 @@ class BookManager extends Actor with ActorLogging {
     for (bestBid <- book.best(QuoteSide.Bid).headOption; bestAsk <- book.best(QuoteSide.Ask).headOption) {
       if (bestBid.price > bestAsk.price) {
         val opportunity = ArbitrageEvent(bestBid, bestAsk)
-        for (s <- subscriptions) s.destination ! opportunity
+        arbMonitor ! opportunity
       }
     }
   }
