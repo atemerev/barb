@@ -75,22 +75,21 @@ class FastmatchConnector(bookManager: ActorRef) extends Actor with Application w
       val side = if (group.getMDEntryType.getValue == MDEntryType.BID) QuoteSide.Bid else QuoteSide.Ask
       val sourceId = group.getMDEntryID.getValue
       val key = OrderKey(PARTY, cp, side, sourceId)
+      val ts = extractTimestamp(message)
       if (mdType == MDUpdateAction.NEW || mdType == MDUpdateAction.CHANGE) {
         val amount = BigDecimal(group.getDecimal(MDEntrySize.FIELD))
         val price = BigDecimal(group.getDecimal(MDEntryPx.FIELD))
         val order = Order(key, amount, price)
-        // todo get time from message
-        bookManager ! AddUpdate(order, DateTime.now())
+        bookManager ! AddUpdate(order, ts)
       } else {
-        bookManager ! Remove(key, DateTime.now())
+        bookManager ! Remove(key, ts)
       }
     }
   }
 
   def onMessage(message: MarketDataSnapshotFullRefresh, sid: SessionID): Unit = {
-    // todo timestamps
-    bookManager ! ClearLp(PARTY, DateTime.now())
-
+    val ts = extractTimestamp(message)
+    bookManager ! ClearLp(PARTY, ts)
     val noEntries = if (message.isSetNoMDEntries) message.getNoMDEntries.getValue else 0
     val group = new MarketDataSnapshotFullRefresh.NoMDEntries
     val cp = CurrencyPair(message.getSymbol.getValue)
@@ -101,8 +100,7 @@ class FastmatchConnector(bookManager: ActorRef) extends Actor with Application w
       val price = BigDecimal(group.getDecimal(MDEntryPx.FIELD))
       val orderId = group.getOrderID.getValue
       val order = Order(OrderKey(PARTY, cp, side, orderId), amount, price)
-      // todo timestamp
-      bookManager ! AddUpdate(order, DateTime.now())
+      bookManager ! AddUpdate(order, ts)
     }
   }
 
@@ -112,6 +110,10 @@ class FastmatchConnector(bookManager: ActorRef) extends Actor with Application w
     val logFactory = new ScreenLogFactory(settings)
     val msgFactory = new DefaultMessageFactory
     new SocketInitiator(this, storeFactory, settings, logFactory, msgFactory)
+  }
+
+  private def extractTimestamp(message: Message): DateTime = {
+    new DateTime(message.getHeader.getUtcTimeStamp(SendingTime.FIELD).getTime)
   }
 }
 
