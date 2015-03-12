@@ -14,29 +14,29 @@ class BookManager extends Actor with ActorLogging {
   def receive = {
     case Subscribe(s) => subscriptions += s
     case Unsubscribe(s) => subscriptions -= s
-    case AddUpdate(order) =>
+    case upd @ AddUpdate(order, timestamp) =>
       val instrument = order.key.instrument
       val book = books.getOrElseUpdate(instrument, OrderBook(instrument)).addUpdate(order)
       books += instrument -> book
-      broadcast(book)
-    case Remove(key) =>
+      broadcast(upd)
+    case upd @ Remove(key, timestamp) =>
       val instrument = key.instrument
       books.get(instrument) match {
-        case Some(book) => {
+        case Some(book) =>
           val newBook = book.remove(key)
           books += instrument -> newBook
-          broadcast(newBook)
-        }
+          broadcast(upd)
         case None => log.warning("No order found for remove attempt: " + key)
       }
   }
 
-  private def broadcast(book: OrderBook): Unit = {
+  private def broadcast(update: BookUpdateEvent): Unit = {
     for (s <- subscriptions) {
-      if (s.instrument.getOrElse(book.instrument) == book.instrument) {
+      // broadcast to all if instrument or party is empty, otherwise broadcast by instrument and/or party
+      if (s.instrument.isEmpty || update.instrument.isEmpty || s.instrument == update.instrument) {
         s.party match {
-          case Some(p) => ???
-          case None => s.destination ! book
+          case Some(p) => if (update.party.isEmpty || update.party.get == p) s.destination ! update
+          case None => s.destination ! update
         }
       }
     }
