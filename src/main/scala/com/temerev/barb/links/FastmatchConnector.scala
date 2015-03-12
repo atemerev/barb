@@ -7,7 +7,8 @@ import com.miriamlaurel.fxcore.instrument.CurrencyPair
 import com.miriamlaurel.fxcore.market.{OrderKey, Order, QuoteSide}
 import com.miriamlaurel.fxcore.party.Party
 import com.temerev.barb.book.OrderBook
-import com.temerev.barb.book.event.{Remove, AddUpdate}
+import com.temerev.barb.book.event.{ClearLp, Remove, AddUpdate}
+import org.joda.time.DateTime
 import quickfix._
 import quickfix.field._
 import quickfix.fix42.{MarketDataSnapshotFullRefresh, MarketDataIncrementalRefresh, MarketDataRequest, TradingSessionStatus}
@@ -78,18 +79,21 @@ class FastmatchConnector(bookManager: ActorRef) extends Actor with Application w
         val amount = BigDecimal(group.getDecimal(MDEntrySize.FIELD))
         val price = BigDecimal(group.getDecimal(MDEntryPx.FIELD))
         val order = Order(key, amount, price)
-        bookManager ! AddUpdate(order)
+        // todo get time from message
+        bookManager ! AddUpdate(order, DateTime.now())
       } else {
-        bookManager ! Remove(key)
+        bookManager ! Remove(key, DateTime.now())
       }
     }
   }
 
   def onMessage(message: MarketDataSnapshotFullRefresh, sid: SessionID): Unit = {
+    // todo timestamps
+    bookManager ! ClearLp(PARTY, DateTime.now())
+
     val noEntries = if (message.isSetNoMDEntries) message.getNoMDEntries.getValue else 0
     val group = new MarketDataSnapshotFullRefresh.NoMDEntries
     val cp = CurrencyPair(message.getSymbol.getValue)
-
     val offers = for (i <- 1 to noEntries) yield {
       message.getGroup(i, group)
       val side = if (group.getMDEntryType.getValue == MDEntryType.BID) QuoteSide.Bid else QuoteSide.Ask
@@ -97,11 +101,10 @@ class FastmatchConnector(bookManager: ActorRef) extends Actor with Application w
       val price = BigDecimal(group.getDecimal(MDEntryPx.FIELD))
       val orderId = group.getOrderID.getValue
       val order = Order(OrderKey(PARTY, cp, side, orderId), amount, price)
+      // todo timestamp
+      bookManager ! AddUpdate(order, DateTime.now())
     }
-
-    log.info(snapshot.toString())
   }
-*/
 
   private def mkInitiator(): Initiator = {
     val settings = new SessionSettings(FastmatchConnector.this.getClass.getResourceAsStream(PATH_TO_SESSION_SETTINGS))
