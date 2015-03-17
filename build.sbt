@@ -13,6 +13,7 @@ libraryDependencies ++= Seq(
   "com.hotspotfx" % "api" % "4.8.2",
   "com.typesafe.akka" %% "akka-actor" % "2.3.9",
   "com.typesafe.akka" %% "akka-testkit" % "2.3.9",
+  "com.typesafe.akka" % "akka-stream-experimental_2.11" % "1.0-M4",
   "org.slf4j" % "slf4j-api" % "1.7.10",
   "org.slf4j" % "slf4j-simple" % "1.7.10",
   "com.miriamlaurel" %% "fxcore" % "2.0",
